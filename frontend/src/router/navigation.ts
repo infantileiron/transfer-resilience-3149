@@ -1,0 +1,1 @@
+export const navigation=[{id:'overview',label:'韧性总览',code:'01'},{id:'datasets',label:'网络与节点',code:'02'},{id:'arcs',label:'容量与时长',code:'03'},{id:'scenarios',label:'停用方案',code:'04'},{id:'results',label:'流量与绕行',code:'05'},{id:'reviews',label:'韧性复核',code:'06'}];

@@ -1,0 +1,75 @@
+name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}
+services:
+ db:
+  image: mysql:8.4
+  container_name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}-db
+  environment:
+   MYSQL_ROOT_PASSWORD: root-demo-only
+   MYSQL_DATABASE: transfer
+   MYSQL_USER: transfer
+   MYSQL_PASSWORD: transfer-demo
+  ports: ["${DB_PORT:-17729}:3306"]
+  volumes: ["db-data:/var/lib/mysql"]
+  healthcheck:
+   test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -utransfer -ptransfer-demo --silent"]
+   interval: 3s
+   timeout: 3s
+   retries: 60
+ redis:
+  image: redis:7.4-alpine
+  container_name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}-redis
+  command: ["redis-server", "--appendonly", "yes"]
+  volumes: ["redis-data:/data"]
+  healthcheck:
+   test: ["CMD", "redis-cli", "ping"]
+   interval: 3s
+   timeout: 3s
+   retries: 30
+ backend:
+  build: ./backend
+  container_name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}-backend
+  environment: &backend-env
+   DATABASE_URL: mysql+pymysql://transfer:transfer-demo@db/transfer?charset=utf8mb4
+   REDIS_URL: redis://redis:6379/0
+   JWT_SECRET: ${JWT_SECRET:-transfer-resilience-development-secret-change}
+   SEED_DEMO: ${SEED_DEMO:-true}
+  ports: ["${BACKEND_PORT:-19229}:8000"]
+  volumes: ["artifacts:/artifacts"]
+  depends_on:
+   db: {condition: service_healthy}
+   redis: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+   interval: 3s
+   timeout: 3s
+   retries: 60
+ worker:
+  build: ./backend
+  container_name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}-worker
+  command: ["python", "-m", "src.worker"]
+  environment: *backend-env
+  volumes: ["artifacts:/artifacts"]
+  depends_on:
+   db: {condition: service_healthy}
+   redis: {condition: service_healthy}
+   backend: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD", "python", "-c", "import os,time;assert time.time()-os.stat('/artifacts/worker-heartbeat').st_mtime<30"]
+   interval: 3s
+   timeout: 3s
+   retries: 60
+ frontend:
+  build: ./frontend
+  container_name: ${COMPOSE_PROJECT_NAME:-transfer-resilience}-frontend
+  ports: ["${FRONTEND_PORT:-18229}:80"]
+  depends_on:
+   backend: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+   interval: 3s
+   timeout: 3s
+   retries: 30
+volumes:
+ db-data:
+ redis-data:
+ artifacts:
