@@ -12,7 +12,7 @@
 |---|---|---|
 |admin|全部|读写、运行、人工复核及批准归档|
 |analyst|节点/边/停用/流量/复核|创建和排队推演、提交意见；归档后端403|
-|viewer|全部只读和报告下载|核对守恒、割集与路径；写操作后端403|
+|viewer|全部只读和报告下载|核对守恒、割集与路径；可下载有效或已失效版本（失效版带原因）；写操作后端403|
 
 ## 启动
 
@@ -26,11 +26,13 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 恰好frontend/backend/worker/db/redis五服务，全部healthcheck。backend等待MySQL/Redis健康，worker再等待backend完成种子，frontend等待backend。数据库、Redis AOF和worker心跳分别命名卷。结束演示：`docker compose down -v --remove-orphans`，会清除本项目演示数据。
 
-SEED_DEMO=true初次建表并幂等填充固定ID/自然键，不重复新增、不覆盖用户修改。种子10节点22弧，容量箱/小时、时长分钟，含平行和反向边；预置无停用、停e13、源站出弧全停三方案，以及真实完成的停e13结果与报告。节点坐标仅作布局，无真实地理含义。所有数据模拟。
+SEED_DEMO=true初次建表并幂等填充固定ID/自然键，不重复新增、不覆盖用户修改。种子10节点22弧，容量箱/小时、时长分钟，含平行和反向边；预置无停用、停e13、源站出弧全停三方案，以及真实完成的停e13结果、接受复核与绑定该意见的第1版有效报告。节点坐标仅作布局，无真实地理含义。所有数据模拟。
 
 ## 六实体与页面
 
-NetworkDataset保存节点和来源；TransferArc单独持久化每条ID/端点/非负整数容量/非负时长，唯一键为(dataset_id,arc_id)，允许端点重复或反向；OutageScenario在建立时冻结全部边快照，记录源汇与停用ID；NetworkRun经Redis独立worker计算并保存证据；ResilienceReview保存人工判断；Report仅在最新意见accepted后由admin归档，run唯一。
+NetworkDataset保存节点和来源；TransferArc单独持久化每条ID/端点/非负整数容量/非负时长，唯一键为(dataset_id,arc_id)，允许端点重复或反向；OutageScenario在建立时冻结全部边快照，记录源汇与停用ID；NetworkRun经Redis独立worker计算并保存证据；ResilienceReview保存人工判断；Report仅在最新意见accepted后由admin归档，绑定该次接受意见、当时推演结果与快照校验码，每次归档为run内递增版本。
+
+归档版本与失效：最新复核意见变为needs_attention时，该run所有有效版本立即失效，记录失效时间、操作者、失效原因和触发意见ID；新接受意见归档时旧有效版本标记为已被取代。失效版本的CSV仍可下载，但响应头X-Report-Status: invalid并带URL编码的X-Report-Reason，CSV首行report_status也写出原因；旧版内容（接受意见原文、证据快照、校验码）保留，不覆盖。同一接受意见重复归档返回原版本，不新增版本；不同接受意见重新接受后归档为新版本，版本号只增不减。归档与复核都以run行锁串行，提交后再做一次有效性对账，保证并发下每个run至多一个有效版本；`/reports/runs/{run_id}/versions`返回各版内容、绑定意见与有效性，Reviews页展示版本列表并标注失效原因。
 
 六业务页：韧性总览、网络与节点、容量与时长、停用方案、流量与绕行、韧性复核（含操作留痕）。平行/反向边曲线错开，逐边台账和残量表保留完整ID；近竖直平行/反向标签向两侧外置，避免中点重叠。图中最大流视图与独立最短路径视图分开，基线/停用两组数值明确；手机图在局部横向容器滚动，页面本身不横溢。
 
@@ -55,6 +57,14 @@ NetworkDataset保存节点和来源；TransferArc单独持久化每条ID/端点/
 ### 输入与失败态
 
 节点2—30、边最多200，ID唯一；源汇不同且都存在；容量严格非负整数（上限100万），时长有限非负（上限100万分钟），零时长允许。未知边停用、未知端点、重复ID、分数容量、负值、非有限值都后端拒绝。没有边也能真实得到最大流0/割0与不可达，而非报伪路径。算法确定性；相同快照与源汇/停用配置产生同一结果，附SHA256校验码。
+
+## 报告版本与失效规则
+
+- 归档请求必须携带run与review；后端校验该review是run当前最新的接受意见，并复制其原文、作者、时间，以及推演的两状态证据快照和SHA256校验码。
+- needs_attention意见提交即失效该run的有效报告，无需等待新归档；CSV下载以`X-Report-Status`/`X-Report-Reason`与首行说明原因，不做静默降级。
+- 同一review_id重复归档幂等返回原版本（幂等键review_id唯一）；review_id留空时绑定当前最新接受意见以兼容旧客户端。版本号在同run内唯一且连续递增。
+- 失效只改状态与失效元数据，原快照与接受意见保留；重新接受后归档新增版本，旧版本仍可按ID下载和核对。
+- 旧部署需执行backend/migrations/002-report-versioning.sql；重复run_id唯一索引应被移除，改为(run_id,version)唯一。
 
 ## 技术与开发
 

@@ -12,5 +12,6 @@ export interface Phase{max_flow:MaxFlow;shortest:Shortest}
 export interface Result{nodes:Node[];arcs:ArcShape[];source:string;sink:string;disabled_arc_ids:string[];baseline:Phase;outage:Phase;impact:{flow_reduction:number;shortest_time_change_minutes:number|null;lost_reachability:boolean};checksum:string;assumptions:string[]}
 export interface Run{id:string;scenario_id:string;status:string;result:Result;error:string;created_at:string}
 export interface Review{id:string;run_id:string;note:string;decision:string;author:string;created_at:string}
-export interface Report{id:string;run_id:string;title:string;published_by:string;created_at:string}
+export interface ReportSummary{baseline_maxflow:number;outage_maxflow:number;cut_capacity:number;flow_reduction:number|null;outage_shortest_minutes:number|null;outage_reachable:boolean}
+export interface Report{id:string;run_id:string;review_id:string;version:number;status:string;title:string;published_by:string;created_at:string;invalidated_at:string;invalidated_by:string;invalidated_reason:string;invalidated_review_id:string;accepted_note:string;accepted_author:string;result_checksum:string;has_snapshot:boolean;summary:ReportSummary|null}
 export interface Audit{id:string;actor:string;action:string;status:number;created_at:string}

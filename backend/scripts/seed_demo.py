@@ -24,6 +24,9 @@ def seed():
   db.flush()
   if not db.get(NetworkRun,"demo-run"):db.add(NetworkRun(id="demo-run",scenario_id="demo-outage",status="completed",result=analyze(db.get(NetworkDataset,"demo-data"),db.get(OutageScenario,"demo-outage")),error="",created_at=now()));db.flush()
   if not db.get(ResilienceReview,"demo-review"):db.add(ResilienceReview(id="demo-review",run_id="demo-run",note="每条边独立保留ID，逐边容量界与节点守恒通过，最大流等于割容量。最短时长路径是独立指标，不解释为最大流分配。",decision="accepted",author="analyst@hengyuan.demo",created_at=now()));db.flush()
-  if not db.get(Report,"demo-report"):db.add(Report(id="demo-report",run_id="demo-run",title="衡远模拟中转·停边韧性复核",published_by="admin@hengyuan.demo",created_at=now()))
+  if not db.get(Report,"demo-report"):
+   from src.services.reports import snapshot_of
+   review=db.get(ResilienceReview,"demo-review");run=db.get(NetworkRun,"demo-run")
+   db.add(Report(id="demo-report",run_id="demo-run",review_id="demo-review",version=1,status="valid",title="衡远模拟中转·停边韧性复核",published_by="admin@hengyuan.demo",created_at=now(),accepted_note=review.note,accepted_author=review.author,result_checksum=run.result.get("checksum",""),snapshot=snapshot_of(run,review),invalidated_at="",invalidated_by="",invalidated_reason="",invalidated_review_id=""))
   db.commit();return {m.__tablename__:db.scalar(select(func.count()).select_from(m)) for m in (User,NetworkDataset,TransferArc,OutageScenario,NetworkRun,ResilienceReview,Report)}
 if __name__=="__main__":print(json.dumps(seed(),ensure_ascii=False))
